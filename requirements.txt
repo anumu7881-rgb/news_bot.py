@@ -1,0 +1,5 @@
+feedparser>=6.0.8
+requests>=2.31.0
+beautifulsoup4>=4.12.2
+deep-translator>=1.9.4
+langdetect>=1.0.9

@@ -1,0 +1,7 @@
+__pycache__
+.git
+.venv
+venv
+news_tracker.db
+.env
+*.pyc

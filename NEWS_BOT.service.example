@@ -1,0 +1,15 @@
+[Unit]
+Description=News Bot Service (news_bot.py)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/news_bot
+ExecStart=/usr/bin/env bash -c 'export TELEGRAM_BOT_TOKEN="<token>" TELEGRAM_CHAT_ID="<chat>"; exec python news_bot.py'
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+
+# Copy this file to /etc/systemd/system/news_bot.service and edit ExecStart as needed.

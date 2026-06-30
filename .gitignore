@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# Env
+.env
+venv/
+.venv/
+
+# SQLite DB
+news_tracker.db
+
+# Editor
+.vscode/
+.idea/
+
+# Misc
+*.log
+dist/
+build/
