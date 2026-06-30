@@ -8,7 +8,7 @@ Single-file script implementing:
 - Scraping fallback image extraction via requests + BeautifulSoup
 - SQLite tracking DB to avoid duplicates
 - Translation to Amharic using `deep-translator` (GoogleTranslator)
-- Telegram publishing with robust URL-then-upload fallback
+- Telegram publishing with text-only messages
 - Daemon (polling) and single-run modes
 
 Configuration is at the top in `SOURCES` and environment variables.
@@ -314,59 +314,47 @@ def build_caption(title: str, summary: str, article_url: str, source_name: str) 
     cta = f"\n🔗 <a href=\"{html.escape(article_url)}\">ሙሉውን መረጃ ለማንበብ እዚህ ይጫኑ</a>\n"
     src = f"\n📍 ምንጭ: {html.escape(source_name)}"
 
-    # combine and ensure under 1024 characters
-    remaining_limit = 1024 - (len(header) + len(cta) + len(src))
+    # combine and ensure under 4096 characters (Telegram text limit)
+    remaining_limit = 4096 - (len(header) + len(cta) + len(src))
     if remaining_limit < 0:
         # extremely unlikely, but guard
-        header = header[:900]
-        remaining_limit = 1024 - (len(header) + len(cta) + len(src))
+        header = header[:3900]
+        remaining_limit = 4096 - (len(header) + len(cta) + len(src))
 
     if len(summary_esc) > remaining_limit:
         summary_esc = summary_esc[: max(0, remaining_limit - 3)] + "..."
 
     caption = f"{header}{summary_esc}{cta}{src}"
-    if len(caption) > 1024:
-        caption = caption[:1023]
+    if len(caption) > 4096:
+        caption = caption[:4095]
     return caption
 
 
-def post_to_telegram(image_url: str, caption: str) -> bool:
+def post_to_telegram(caption: str) -> bool:
+    """Post text message directly to Telegram channel without image."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         LOG.error("Telegram credentials not set. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID.")
         return False
 
     api_base = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
-    send_photo = f"{api_base}/sendPhoto"
+    send_message = f"{api_base}/sendMessage"
 
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "photo": image_url, "caption": caption, "parse_mode": "HTML"}
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": caption,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": False,
+    }
+    
     try:
-        r = SESSION.post(send_photo, data=payload, timeout=15)
+        r = SESSION.post(send_message, data=payload, timeout=15)
         if r.ok and r.json().get("ok"):
-            LOG.info("Posted via URL successfully")
+            LOG.info("Posted text message to Telegram successfully")
             return True
-        LOG.debug("Telegram send via URL failed: %s", r.text)
-    except Exception as exc:
-        LOG.debug("Telegram send via URL exception: %s", exc)
-
-    # fallback: download image and upload as file
-    try:
-        headers = {"User-Agent": "news-bot/1.0 (+https://example.org)"}
-        img_resp = SESSION.get(image_url, headers=headers, stream=True, timeout=20)
-        img_resp.raise_for_status()
-        content_type = img_resp.headers.get("Content-Type") or "image/jpeg"
-        ext = mimetypes.guess_extension(content_type.split(";")[0]) or ".jpg"
-        bio = io.BytesIO(img_resp.content)
-        bio.name = f"upload{ext}"
-        files = {"photo": (bio.name, bio, content_type)}
-        data = {"chat_id": TELEGRAM_CHAT_ID, "caption": caption, "parse_mode": "HTML"}
-        r2 = requests.post(send_photo, data=data, files=files, timeout=30)
-        if r2.ok and r2.json().get("ok"):
-            LOG.info("Posted via upload successfully")
-            return True
-        LOG.error("Telegram upload failed: %s", r2.text)
+        LOG.error("Telegram send failed: %s", r.text)
         return False
     except Exception as exc:
-        LOG.exception("Failed to upload image to Telegram: %s", exc)
+        LOG.exception("Failed to post message to Telegram: %s", exc)
         return False
 
 
@@ -414,22 +402,19 @@ def process_feed(source_name: str, feed_url: str) -> None:
             title_translated = title
             summary_translated = summary
 
-        # Resolve image
-        image_url = resolve_image(entry, link)
-
         article = Article(
             source=source_name,
             url=link,
             title=title_translated,
             summary=summary_translated,
             published=published,
-            image_url=image_url,
+            image_url=None,
         )
 
         caption = build_caption(article.title, article.summary, article.url, article.source)
 
         try:
-            ok = post_to_telegram(article.image_url or PLACEHOLDER_IMAGE, caption)
+            ok = post_to_telegram(caption)
         except Exception:
             LOG.exception("Unhandled exception while posting to Telegram for %s", article.url)
             ok = False
