@@ -53,6 +53,13 @@ try:
 except Exception:  # pragma: no cover - optional
     detect = None
 
+# load .env if present
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
 LOG = logging.getLogger("news_bot")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
